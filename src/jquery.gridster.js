@@ -330,6 +330,30 @@
         size_x || (size_x = 1);
         size_y || (size_y = 1);
 
+        //检查可用空间
+        var max_cols = 0,
+            max_rows = 0,
+            extra_place_exist = false;
+        if(this.options.max_rows && this.options.max_rows != Infinity) {
+            max_rows = this.options.max_rows;
+        }
+        if(this.options.max_cols && this.options.max_cols != Infinity) {
+            max_cols = this.options.max_cols;
+        }
+
+        for(var i=1; i<= max_cols;i++) {
+            if(extra_place_exist) break;
+            for(var j=1;j<= max_rows; j++ ) {
+                if(!this.gridmap[i][j]) {
+                    extra_place_exist = true;
+                    break;
+                }
+            }
+        }
+        if(!extra_place_exist) {
+            return;
+        }
+
         if (!col & !row) {
             pos = this.next_position(size_x, size_y);
         } else {
@@ -452,7 +476,9 @@
     fn.resize_widget = function($widget, size_x, size_y, callback) {
         var wgd = $widget.coords().grid;
         var col = wgd.col;
+        var row = wgd.row;
         var max_cols = this.options.max_cols;
+        var max_rows = this.options.max_rows;
         var old_size_y = wgd.size_y;
         var old_col = wgd.col;
         var new_col = old_col;
@@ -463,7 +489,9 @@
         if (max_cols !== Infinity) {
             size_x = Math.min(size_x, max_cols - col + 1);
         }
-
+        if (max_rows) {
+            size_y = Math.min(size_y,max_rows - row + 1)
+        }
         if (size_y > old_size_y) {
             this.add_faux_rows(Math.max(size_y - old_size_y, 0));
         }
@@ -1123,11 +1151,11 @@
         this.colliders_data = this.collision_api.get_closest_colliders(
             abs_offset);
 
-        this.on_overlapped_column_change(
+        /*this.on_overlapped_column_change(
             this.on_start_overlapping_column, this.on_stop_overlapping_column);
 
         this.on_overlapped_row_change(
-            this.on_start_overlapping_row, this.on_stop_overlapping_row);
+            this.on_start_overlapping_row, this.on_stop_overlapping_row);*/
 
 
         if (this.helper && this.$player) {
@@ -1283,6 +1311,7 @@
     * @param {Object} ui A prepared ui object with useful drag-related data
     */
     fn.on_stop_resize = function(event, ui) {
+        this.resize_widget(this.$resized_widget, this.resize_last_sizex, this.resize_last_sizey);
         this.$resized_widget
             .removeClass('resizing')
             .css({
@@ -1344,7 +1373,10 @@
 
         var max_cols = (this.container_width / this.min_widget_width) -
             this.resize_initial_col + 1;
+        var resize_initial_row = this.$resized_widget.coords().grid.row;
+        var max_rows = (this.container_height / this.min_widget_height) - resize_initial_row + 1;
         var limit_width = ((max_cols * this.min_widget_width) - margin_x * 2);
+        var limit_height = ((max_rows * this.min_widget_height) - margin_y * 2);
 
         size_x = Math.max(Math.min(size_x, max_size_x), min_size_x);
         size_x = Math.min(max_cols, size_x);
@@ -1353,7 +1385,44 @@
         min_width = (min_size_x * wbd_x) + ((size_x - 1) * margin_x * 2);
 
         size_y = Math.max(Math.min(size_y, max_size_y), min_size_y);
+        var i,
+            curRows,
+            col,
+            base_col = this.resize_initial_col + this.resize_initial_sizex,
+            rowCnt = 0,
+            is_row_overflow = false;
+       
+        //区块变宽或变高时进行判断
+        if(inc_units_x > 0 || inc_units_y > 0) {    
+            for(i=this.resize_initial_col;i<base_col;i++) {
+                curRows = $.map(this.gridmap[i],function(val,idx) {if(val) return val;}).length;
+                rowCnt = curRows + inc_units_y;
+                if(rowCnt > this.options.max_rows) {
+                    is_row_overflow = true;
+                    size_y = this.resize_initial_sizey;
+                    size_x = this.resize_initial_sizex;
+                    break;
+                }
+            }
+            //扩展列
+            for(i=0; i< inc_units_x; i++) {
+                col = base_col + i;
+                if (is_row_overflow || col > this.cols) break;
+               
+                curRows = $.map(this.gridmap[col],function(val,idx) {if(val) return val;}).length;
+                rowCnt = curRows + size_y;
+                if(rowCnt > this.options.max_rows) {
+                    is_row_overflow = true;
+                    size_y = this.resize_initial_sizey;
+                    size_x = this.resize_initial_sizex;
+                    break;
+                }
+            }
+           
+        }
+
         max_height = (max_size_y * wbd_y) + ((size_y - 1) * margin_y * 2);
+        max_height = Math.min(max_height,limit_height);
         min_height = (min_size_y * wbd_y) + ((size_y - 1) * margin_y * 2);
 
         if (this.resize_dir.right) {
@@ -1384,7 +1453,7 @@
         if (size_x !== this.resize_last_sizex ||
             size_y !== this.resize_last_sizey) {
 
-            this.resize_widget(this.$resized_widget, size_x, size_y);
+            //this.resize_widget(this.$resized_widget, size_x, size_y);
             this.set_dom_grid_width(this.cols);
 
             this.$resize_preview_holder.css({
@@ -1430,6 +1499,29 @@
         var n_cols = cols.length;
         var i;
 
+        var player_size_y = this.$player.coords().grid.size_y,
+            player_size_x = this.$player.coords().grid.size_x,
+            rowCnt = 0,
+            self = this,
+            init_col = this.$preview_holder.data('col'),
+            init_cols= [];
+        // 达到最大行限制
+        for(i=0; i< player_size_x; i++) {
+            init_cols.push(init_col + i);
+        }
+        for (i=0; i< n_cols; i++) {
+            var curRows = $.map(this.gridmap[cols[i]],function(val,idx) {if(val) return val;}).length;
+            if($.inArray(cols[i],init_cols) !== -1) {
+                rowCnt = Math.max(curRows,rowCnt);
+            }
+            else {
+                rowCnt = Math.max(curRows + player_size_y,rowCnt);
+            }
+        }
+        if(rowCnt > this.options.max_rows) {
+            return this;
+        }
+
         for (i = 0; i < n_cols; i++) {
             if ($.inArray(cols[i], this.last_cols) === -1) {
                 (start_callback || $.noop).call(this, cols[i]);
@@ -1467,6 +1559,33 @@
         var last_n_rows = this.last_rows.length;
         var n_rows = rows.length;
         var i;
+
+        var cols = this.get_targeted_columns(
+            this.colliders_data[0].el.data.col);
+        var n_cols = cols.length;
+        var player_size_y = this.$player.coords().grid.size_y,
+            player_size_x = this.$player.coords().grid.size_x,
+            rowCnt = 0,
+            self = this,
+            init_col = this.$preview_holder.data('col'),
+            init_cols= [];
+        // 达到最大行限制
+        for(i=0; i< player_size_x; i++) {
+            init_cols.push(init_col + i);
+        }
+        
+        for (i=0; i< n_cols; i++) {
+            var curRows = $.map(this.gridmap[cols[i]],function(val,idx) {if(val) return val;}).length;
+            if($.inArray(cols[i],init_cols) !== -1) {
+                rowCnt = Math.max(curRows,rowCnt);
+            }
+            else {
+                rowCnt = Math.max(curRows + player_size_y,rowCnt);
+            }   
+        }
+        if(rowCnt > this.options.max_rows) {
+            return this;
+        }
 
         for (i = 0; i < n_rows; i++) {
             if ($.inArray(rows[i], this.last_rows) === -1) {
@@ -1515,10 +1634,10 @@
         var $overlapped_widgets = this.get_widgets_overlapped(
             this.player_grid_data);
 
-        var constraints = this.widgets_constraints($overlapped_widgets);
+        /*var constraints = this.widgets_constraints($overlapped_widgets);
 
         this.manage_movements(constraints.can_go_up, to_col, to_row);
-        this.manage_movements(constraints.can_not_go_up, to_col, to_row);
+        this.manage_movements(constraints.can_not_go_up, to_col, to_row);*/
 
         /* if there is not widgets overlapping in the new player position,
          * update the new placeholder position. */
@@ -1868,6 +1987,7 @@
 
             while (--r > 0) {
                 if (this.is_empty(tcol, r) || this.is_player(tcol, r) ||
+                //if (this.is_player(tcol, r) ||
                     this.is_widget(tcol, r) &&
                     grid_col[r].is($widgets_under_player)
                 ) {
@@ -2411,6 +2531,7 @@
 
 
     fn.can_go_up = function($el) {
+        return false;
         var el_grid_data = $el.coords().grid;
         var initial_row = el_grid_data.row;
         var prev_row = initial_row - 1;
@@ -2751,10 +2872,12 @@
     fn.set_dom_grid_height = function(height) {
         if (typeof height === 'undefined') {
             var r = this.get_highest_occupied_cell().row;
-            height = r * this.min_widget_height;
+            //height = r * this.min_widget_height;
         }
-
-        this.container_height = height;
+        var max_rows = this.options.max_rows;
+        cols = Math.min(max_rows,Math.max(r,this.options.min_rows));
+        //this.container_height = height;
+        this.container_height = cols * this.min_widget_height;
         this.$el.css('height', this.container_height);
         return this;
     };

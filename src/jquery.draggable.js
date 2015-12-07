@@ -166,6 +166,9 @@
             } else if(left < this.player_min_left) {
                 left = this.player_min_left;
             }
+            if (top > this.player_max_top) {
+                top = this.player_max_top;
+            }
         }
 
         return {
@@ -192,13 +195,15 @@
     };
 
 
-    fn.set_limits = function(container_width) {
+    fn.set_limits = function(container_width,container_height) {
         container_width || (container_width = this.$container.width());
+        container_height || (container_height = this.$container.height());
         this.player_max_left = (container_width - this.player_width +
             - this.options.offset_left);
-
+        this.player_max_top = (container_height - this.player_height +
+            - this.options.offset_top);
         this.options.container_width = container_width;
-
+        this.options.container_height = container_height;
         return this;
     };
 
@@ -316,7 +321,12 @@
         this.baseX = Math.round(offset.left);
         this.baseY = Math.round(offset.top);
         this.initial_container_width = this.options.container_width || this.$container.width();
-
+        var gridster_options = this.$container.data('gridster').options;
+        var gridster_container_height;
+        if(gridster_options.max_rows && gridster_options.max_rows !== Infinity) {
+            gridster_container_height = (gridster_options.widget_base_dimensions[1] + gridster_options.widget_margins[1] *2) * 
+            gridster_options.max_rows;
+        }
         if (this.options.helper === 'clone') {
             this.$helper = this.$player.clone()
                 .appendTo(this.$container).addClass('helper');
@@ -333,7 +343,7 @@
         this.player_width = this.$player.width();
         this.player_height = this.$player.height();
 
-        this.set_limits(this.options.container_width);
+        this.set_limits(this.options.container_width,gridster_container_height);
 
         if (this.options.start) {
             this.options.start.call(this.$player, e, this.get_drag_data(e));
