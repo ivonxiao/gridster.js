@@ -1215,7 +1215,7 @@
 
         this.$player.coords().grid.row = this.placeholder_grid_data.row;
         this.$player.coords().grid.col = this.placeholder_grid_data.col;
-
+        this.$player.removeData('row-pos');
         if (this.options.draggable.stop) {
           this.options.draggable.stop.call(this, event, ui);
         }
@@ -1977,7 +1977,15 @@
         var upper_rows = [];
         var min_row = 10000;
         var $widgets_under_player = this.get_widgets_under_player();
-
+        
+        if(this.$player.data('row-pos') === undefined) {
+            //首次记录其行位置
+            this.$player.data('row-pos',widget_grid_data.row);
+            return widget_grid_data.row;
+        }
+        else {
+            return this.$player.data('row-pos');
+        }
         /* generate an array with columns as index and array with upper rows
          * empty as value */
         this.for_each_column_occupied(widget_grid_data, function(tcol) {
